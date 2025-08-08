@@ -18,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: clux/muslrust:stable
-      volumes:
-        - ${{ github.workspace }}:/volume
 
     steps:
       # Checkout the repository
@@ -57,38 +55,38 @@ jobs:
         run: |
           rustup target add $BUILD_TARGET
           cargo build --release --target $BUILD_TARGET
-        working-directory: /volume
+        working-directory: /github/workspace
 
       # Strip the binary to reduce size
       - name: Strip binary
-        run: x86_64-linux-musl-strip /volume/target/$BUILD_TARGET/release/$BINARY_NAME
-        working-directory: /volume
+        run: x86_64-linux-musl-strip /github/workspace/target/$BUILD_TARGET/release/$BINARY_NAME
+        working-directory: /github/workspace
 
       # Verify static linking
       - name: Verify static binary
-        run: ldd /volume/target/$BUILD_TARGET/release/$BINARY_NAME || true
-        working-directory: /volume
+        run: ldd /github/workspace/target/$BUILD_TARGET/release/$BINARY_NAME || true
+        working-directory: /github/workspace
 
       # Upload artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_NAME }}-${{ env.BUILD_TARGET }}
-          path: /volume/target/${{ env.BUILD_TARGET }}/release/${{ env.BINARY_NAME }}
+          path: /github/workspace/target/${{ env.BUILD_TARGET }}/release/${{ env.BINARY_NAME }}
 
       # Create and upload release archive
       - name: Create release archive
         if: github.event_name == 'release'
         run: |
           mkdir ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}
-          mv /volume/target/$BUILD_TARGET/release/$BINARY_NAME ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}/
+          mv /github/workspace/target/$BUILD_TARGET/release/$BINARY_NAME ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}/
           tar -czf ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}.tar.gz ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}
-        working-directory: /volume
+        working-directory: /github/workspace
 
       - name: Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: /volume/${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}.tar.gz
+          files: /github/workspace/${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
