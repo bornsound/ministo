@@ -12,9 +12,11 @@ jobs:
     container:
       image: centos:7
     steps:
-      # Checkout the repository
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # Verify CentOS 7 environment
+      - name: Verify CentOS 7
+        run: |
+          cat /etc/*release | grep ^ID
+          cat /etc/*release | grep ^VERSION_ID
 
       # Install dependencies
       - name: Install build dependencies
@@ -29,6 +31,10 @@ jobs:
           source $HOME/.cargo/env
           rustc --version
           cargo --version
+
+      # Checkout code using Node 16 compatible version
+      - name: Checkout code
+        uses: actions/checkout@v3  # Use v3 to avoid Node 20 dependency
 
       # Build the project with optimizations
       - name: Build with Cargo (optimized)
@@ -49,9 +55,9 @@ jobs:
           ./target/release/ministo || echo "Binary crashed, check logs"
         continue-on-error: true
 
-      # Upload binary as artifact
+      # Upload optimized binary
       - name: Upload optimized binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: ministo-binary-optimized
           path: ./target/release/ministo
@@ -61,7 +67,6 @@ jobs:
         run: |
           source $HOME/.cargo/env
           cargo clean
-          cargo build --release --verbose --no-default-features
           # Override optimizations
           echo "[profile.release]" >> Cargo.toml
           echo "lto = false" >> Cargo.toml
@@ -74,6 +79,13 @@ jobs:
           export RUST_LOG=debug
           ./target/release/ministo || echo "Binary crashed, check logs"
         continue-on-error: true
+
+      # Upload non-optimized binary
+      - name: Upload non-optimized binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: ministo-binary-no-optimizations
+          path: ./target/release/ministo
 
       # Debug with GDB if either run fails
       - name: Debug with GDB
