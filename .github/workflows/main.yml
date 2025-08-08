@@ -1,7 +1,11 @@
 name: Build Ministo with Minimal GLIBC
 
 on:
-  workflow_dispatch:  # manual trigger, can also add 'schedule' or 'push'
+  workflow_dispatch:    # Manual trigger
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
@@ -9,13 +13,21 @@ jobs:
 
     steps:
       - name: Clone Ministo repository
+        run: git clone https://github.com/emjomi/ministo.git
+
+      - name: Build Ministo with rust-min-libc Docker image
         run: |
-          git clone https://github.com/emjomi/ministo.git
           cd ministo
           docker run --rm \
             --volume "$PWD":/src \
             --user "$(id -u):$(id -g)" \
-            ghcr.io/manticoresoftware/rust-min-libc build --release
+            ghcr.io/manticoresoftware/rust-min-libc:1.77.0 build --release
 
-      - name: List built files
+      - name: List build artifacts
         run: ls -lh ministo/target/release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ministo-release
+          path: ministo/target/release/
