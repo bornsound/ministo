@@ -1,4 +1,4 @@
-name: Build Ministo with Minimal GLIBC
+name: Build Ministo with Minimal GLIBC (unixgeek image)
 
 on:
   workflow_dispatch:
@@ -15,13 +15,13 @@ jobs:
       - name: Clone Ministo repository
         run: git clone https://github.com/emjomi/ministo.git
 
-      - name: Build Ministo with rust-min-libc Docker image
+      - name: Build Ministo with unixgeek rust-min-libc Docker image
         run: |
           cd ministo
           docker run --rm \
             --volume "$PWD":/src \
             --user "$(id -u):$(id -g)" \
-            ghcr.io/manticoresoftware/rust-min-libc:1.77.0 build --release
+            unixgeek/rust-min-libc-target build --release
 
       - name: List build artifacts
         run: ls -lh ministo/target/release
