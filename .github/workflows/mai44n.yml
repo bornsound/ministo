@@ -1,4 +1,4 @@
-name: CI Build for ministo on CentOS 7
+name: Build Ministo (Ubuntu 14.04 in Docker)
 
 on:
   push:
@@ -9,86 +9,55 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: centos:7
+
     steps:
-      # Verify CentOS 7 environment
-      - name: Verify CentOS 7
+      # 1. Checkout repo (not actually used since we clone inside Docker, but keeps GHA clean)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Build Docker image with Ubuntu 14.04 + CMake 3.25.3 + Rust
+      - name: Build Docker image
         run: |
-          cat /etc/*release | grep ^ID
-          cat /etc/*release | grep ^VERSION_ID
+          cat > Dockerfile <<'EOF'
+          FROM ubuntu:14.04
 
-      # Install dependencies
-      - name: Install build dependencies
+          # Install build tools and OpenSSL dev
+          RUN apt-get update && apt-get install -y \
+              git curl build-essential wget \
+              libssl-dev \
+           && rm -rf /var/lib/apt/lists/*
+
+          # Build and install modern CMake
+          RUN wget https://cmake.org/files/v3.25/cmake-3.25.3.tar.gz \
+           && tar -xzf cmake-3.25.3.tar.gz \
+           && cd cmake-3.25.3 \
+           && ./bootstrap --prefix=/usr/local \
+           && make -j8 \
+           && make install \
+           && cd .. && rm -rf cmake-3.25.3*
+
+          # Install Rust
+          RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+          ENV PATH="/root/.cargo/bin:${PATH}"
+
+          # Clone and build ministo
+          WORKDIR /usr/src/ministo
+          RUN git clone https://github.com/bornsound/ministo.git . \
+           && cargo build --release --jobs 8
+          EOF
+
+          docker build -t ministo-ubuntu14 .
+
+      # 3. Extract built binary from Docker
+      - name: Copy binary from Docker image
         run: |
-          yum update -y
-          yum install -y gcc gcc-c++ make git curl file gdb libstdc++-devel
+          container_id=$(docker create ministo-ubuntu14)
+          docker cp $container_id:/usr/src/ministo/target/release/ministo ./ministo
+          docker rm $container_id
 
-      # Install Rust and Cargo
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source $HOME/.cargo/env
-          rustc --version
-          cargo --version
-
-      # Checkout code using Node 16 compatible version
-      - name: Checkout code
-        uses: actions/checkout@v3  # Use v3 to avoid Node 20 dependency
-
-      # Build the project with optimizations
-      - name: Build with Cargo (optimized)
-        run: |
-          source $HOME/.cargo/env
-          cargo clean
-          cargo build --release --verbose
-
-      # Verify binary dependencies
-      - name: Check binary dependencies
-        run: |
-          ldd ./target/release/ministo
-
-      # Run the binary with debug logging
-      - name: Run binary with debug logging (optimized)
-        run: |
-          export RUST_LOG=debug
-          ./target/release/ministo || echo "Binary crashed, check logs"
-        continue-on-error: true
-
-      # Upload optimized binary
-      - name: Upload optimized binary
-        uses: actions/upload-artifact@v3
+      # 4. Upload as an artifact
+      - name: Upload ministo binary
+        uses: actions/upload-artifact@v4
         with:
-          name: ministo-binary-optimized
-          path: ./target/release/ministo
-
-      # Build without optimizations for debugging
-      - name: Build with Cargo (no optimizations)
-        run: |
-          source $HOME/.cargo/env
-          cargo clean
-          # Override optimizations
-          echo "[profile.release]" >> Cargo.toml
-          echo "lto = false" >> Cargo.toml
-          echo "codegen-units = 16" >> Cargo.toml
-          cargo build --release --verbose
-
-      # Run the binary without optimizations
-      - name: Run binary with debug logging (no optimizations)
-        run: |
-          export RUST_LOG=debug
-          ./target/release/ministo || echo "Binary crashed, check logs"
-        continue-on-error: true
-
-      # Upload non-optimized binary
-      - name: Upload non-optimized binary
-        uses: actions/upload-artifact@v3
-        with:
-          name: ministo-binary-no-optimizations
-          path: ./target/release/ministo
-
-      # Debug with GDB if either run fails
-      - name: Debug with GDB
-        if: failure()
-        run: |
-          gdb --batch --ex run --ex bt ./target/release/ministo
+          name: ministo-linux
+          path: ./ministo
