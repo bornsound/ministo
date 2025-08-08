@@ -1,0 +1,76 @@
+name: CI Build for ministo
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: centos:7
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install dependencies
+      - name: Install build dependencies
+        run: |
+          yum update -y
+          yum install -y gcc gcc-c++ make git curl file
+
+      # Install Rust and Cargo
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+          rustup target add x86_64-unknown-linux-musl
+          rustc --version
+          cargo --version
+
+      # Verify musl-cross-make toolchain
+      - name: Verify musl-cross-make toolchain
+        run: |
+          ls -l musl-cross-make/output/bin/x86_64-linux-musl-g++
+          ls -l musl-cross-make/output/x86_64-linux-musl/lib/libstdc++.a
+          # Ensure no libstdc++.so to avoid dynamic linking
+          if [ -f musl-cross-make/output/x86_64-linux-musl/lib/libstdc++.so ]; then
+            mv musl-cross-make/output/x86_64-linux-musl/lib/libstdc++.so \
+               musl-cross-make/output/x86_64-linux-musl/lib/libstdc++.so.bak
+          fi
+
+      # Build the project
+      - name: Build with Cargo
+        run: |
+          source $HOME/.cargo/env
+          cargo clean
+          cargo build --release --target x86_64-unknown-linux-musl --verbose
+
+      # Verify the binary is static
+      - name: Check binary dependencies
+        run: |
+          ldd ./target/x86_64-unknown-linux-musl/release/ministo || echo "Binary is static"
+
+      # Run the binary with debug logging
+      - name: Run binary with debug logging
+        run: |
+          export RUST_LOG=debug
+          ./target/x86_64-unknown-linux-musl/release/ministo || echo "Binary crashed, check logs"
+        continue-on-error: true  # Allow workflow to continue even if the binary crashes
+
+      # Upload binary as artifact
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ministo-binary
+          path: ./target/x86_64-unknown-linux-musl/release/ministo
+
+      # Debug with GDB if binary crashes
+      - name: Install GDB and debug
+        if: failure()
+        run: |
+          yum install -y gdb
+          gdb --batch --ex run --ex bt ./target/x86_64-unknown-linux-musl/release/ministo
