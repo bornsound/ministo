@@ -1,4 +1,4 @@
-name: Build Ministo (Ubuntu 14.04 in Docker)
+name: Build Ministo on Ubuntu ff14.04 with GCC 7
 
 on:
   push:
@@ -11,23 +11,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo (not actually used since we clone inside Docker, but keeps GHA clean)
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. Build Docker image with Ubuntu 14.04 + CMake 3.25.3 + Rust
-      - name: Build Docker image
+      - name: Build Docker image and build ministo
         run: |
           cat > Dockerfile <<'EOF'
           FROM ubuntu:14.04
 
-          # Install build tools and OpenSSL dev
-          RUN apt-get update && apt-get install -y \
-              git curl build-essential wget \
-              libssl-dev \
-           && rm -rf /var/lib/apt/lists/*
+          # Install basic tools and OpenSSL dev
+          RUN apt-get update && apt-get install -y software-properties-common \
+              git curl build-essential wget libssl-dev
 
-          # Build and install modern CMake
+          # Install GCC 7 and make it default
+          RUN add-apt-repository ppa:ubuntu-toolchain-r/test \
+           && apt-get update \
+           && apt-get install -y gcc-7 g++-7 \
+           && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 100 \
+           && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 100
+
+          # Build and install CMake 3.25.3 from source
           RUN wget https://cmake.org/files/v3.25/cmake-3.25.3.tar.gz \
            && tar -xzf cmake-3.25.3.tar.gz \
            && cd cmake-3.25.3 \
@@ -36,27 +39,26 @@ jobs:
            && make install \
            && cd .. && rm -rf cmake-3.25.3*
 
-          # Install Rust
+          # Install Rust (stable)
           RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
           ENV PATH="/root/.cargo/bin:${PATH}"
 
-          # Clone and build ministo
+          # Clone ministo and build
           WORKDIR /usr/src/ministo
           RUN git clone https://github.com/bornsound/ministo.git . \
            && cargo build --release --jobs 8
+
           EOF
 
-          docker build -t ministo-ubuntu14 .
+          docker build -t ministo-ubuntu14-gcc7 .
 
-      # 3. Extract built binary from Docker
-      - name: Copy binary from Docker image
+      - name: Extract ministo binary
         run: |
-          container_id=$(docker create ministo-ubuntu14)
+          container_id=$(docker create ministo-ubuntu14-gcc7)
           docker cp $container_id:/usr/src/ministo/target/release/ministo ./ministo
           docker rm $container_id
 
-      # 4. Upload as an artifact
-      - name: Upload ministo binary
+      - name: Upload built binary
         uses: actions/upload-artifact@v4
         with:
           name: ministo-linux
