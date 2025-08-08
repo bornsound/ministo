@@ -16,16 +16,14 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: clux/muslrust:stable
-
+    container:
+      image: rust:alpine3.18  # Alpine-based image with Rust, musl-g++, and cmake pre-installed
     steps:
-      # Checkout the repository
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Ensure full history for accurate caching
+          fetch-depth: 0
 
-      # Cache Rust dependencies and build artifacts
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -37,13 +35,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      # Install musl-g++, cmake, and dependencies
-      - name: Install dependencies
-        run: |
-          apk update
-          apk add --no-cache musl-dev g++ cmake
-
-      # Configure musl-g++ for CMake and Cargo
       - name: Configure environment
         run: |
           echo "CXX=x86_64-linux-musl-g++" >> $GITHUB_ENV
@@ -51,28 +42,23 @@ jobs:
           echo "RUSTFLAGS=-C link-arg=-static-libstdc++ -C target-feature=+crt-static" >> $GITHUB_ENV
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-g++" >> $GITHUB_ENV
 
-      # Build the project
       - name: Build
         run: |
           rustup target add $BUILD_TARGET
           cargo build --release --target $BUILD_TARGET
 
-      # Strip the binary to reduce size
       - name: Strip binary
         run: x86_64-linux-musl-strip target/$BUILD_TARGET/release/$BINARY_NAME
 
-      # Verify static linking
       - name: Verify static binary
         run: ldd target/$BUILD_TARGET/release/$BINARY_NAME || true
 
-      # Upload artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_NAME }}-${{ env.BUILD_TARGET }}
-          path: target/${{ env.BUILD_TARGET }}/release/${{ env.BINARY_NAME }}
+          path: target/${{ env.BINARY_NAME }}-${{ env.BUILD_TARGET }}/release/${{ env.BINARY_NAME }}
 
-      # Create and upload release archive
       - name: Create release archive
         if: github.event_name == 'release'
         run: |
