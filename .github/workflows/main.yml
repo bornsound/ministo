@@ -1,4 +1,4 @@
-name: Build Ministo with Minimal GLIBC (unixgeek image)
+name: Build Ministo with unixgeek rust-min-libc-target Dockerfile
 
 on:
   workflow_dispatch:
@@ -12,18 +12,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Clone Ministo repository
+      - name: Checkout Ministo repository
         run: git clone https://github.com/emjomi/ministo.git
 
-      - name: Build Ministo with unixgeek rust-min-libc Docker image
+      - name: Checkout unixgeek rust-min-libc-target repo
+        run: git clone https://github.com/unixgeek/docker-rust-min-libc-target.git
+
+      - name: Build rust-min-libc-target Docker image
+        run: |
+          docker build -t rust-min-libc-target ./docker-rust-min-libc-target
+
+      - name: Build Ministo with rust-min-libc-target image
         run: |
           cd ministo
           docker run --rm \
             --volume "$PWD":/src \
             --user "$(id -u):$(id -g)" \
-            unixgeek/rust-min-libc-target build --release
+            rust-min-libc-target build --release
 
-      - name: List build artifacts
+      - name: List built artifacts
         run: ls -lh ministo/target/release
 
       - name: Upload build artifacts
