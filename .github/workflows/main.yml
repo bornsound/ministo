@@ -1,7 +1,7 @@
 name: Build Ministo with Minimal GLIBC
 
 on:
-  workflow_dispatch:    # Manual trigger
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -27,7 +27,7 @@ jobs:
         run: ls -lh ministo/target/release
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ministo-release
           path: ministo/target/release/
