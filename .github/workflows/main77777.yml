@@ -1,4 +1,4 @@
-name: Build Ministo on CentOS 7
+name: Build Ministo on CentOS 8
 
 on:
   workflow_dispatch:
@@ -8,22 +8,22 @@ on:
   pull_request:
 
 jobs:
-  build-centos7:
+  build-centos8:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Build Ministo inside CentOS 7 container
+      - name: Build Ministo inside CentOS 8 container
         run: |
           docker run --rm -i \
             -v "${{ github.workspace }}":/workspace \
             -w /workspace \
-            centos:7 /bin/bash -c "\
-              yum -y update && \
-              yum -y groupinstall 'Development Tools' && \
-              yum -y install curl gcc gcc-c++ make openssl-devel && \
+            centos:8 /bin/bash -c "\
+              dnf -y update && \
+              dnf -y groupinstall 'Development Tools' && \
+              dnf -y install curl gcc gcc-c++ make openssl-devel && \
               curl https://sh.rustup.rs -sSf | sh -s -- -y && \
               source $HOME/.cargo/env && \
               cargo build --release"
@@ -34,5 +34,5 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ministo-centos7-release
+          name: ministo-centos8-release
           path: target/release/
