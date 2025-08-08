@@ -1,97 +1,21 @@
-name: Build ministo
+name: Build Ministo with Minimal GLIBC
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  release:
-    types: [created]
-
-env:
-  CARGO_TERM_COLOR: always
-  BUILD_TARGET: x86_64-unknown-linux-musl
-  BINARY_NAME: ministo
+  workflow_dispatch:  # manual trigger, can also add 'schedule' or 'push'
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-unknown-linux-musl
-          override: true
-
-      - name: Install dependencies
+      - name: Clone Ministo repository
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential g++ musl-tools musl-dev cmake git make
+          git clone https://github.com/emjomi/ministo.git
+          cd ministo
+          docker run --rm \
+            --volume "$PWD":/src \
+            --user "$(id -u):$(id -g)" \
+            ghcr.io/manticoresoftware/rust-min-libc build --release
 
-      - name: Install musl-cross-make
-        run: |
-          git clone https://github.com/richfelker/musl-cross-make
-          cd musl-cross-make
-          make install TARGET=x86_64-linux-musl
-          echo "/musl-cross-make/output/bin" >> $GITHUB_PATH
-
-      - name: Configure environment
-        run: |
-          echo "CC=/musl-cross-make/output/bin/x86_64-linux-musl-gcc" >> $GITHUB_ENV
-          echo "CXX=/musl-cross-make/output/bin/x86_64-linux-musl-g++" >> $GITHUB_ENV
-          echo "CMAKE_C_COMPILER=/musl-cross-make/output/bin/x86_64-linux-musl-gcc" >> $GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER=/musl-cross-make/output/bin/x86_64-linux-musl-g++" >> $GITHUB_ENV
-          echo "CFLAGS=-I/musl-cross-make/output/include" >> $GITHUB_ENV
-          echo "CXXFLAGS=-I/musl-cross-make/output/include/c++/9.4.0 -I/musl-cross-make/output/include/c++/9.4.0/x86_64-linux-musl" >> $GITHUB_ENV
-          echo "LDFLAGS=-L/musl-cross-make/output/lib -static-libstdc++" >> $GITHUB_ENV
-          echo "RUSTFLAGS=-C link-arg=-static-libstdc++ -C target-feature=+crt-static -C link-arg=-L/musl-cross-make/output/lib" >> $GITHUB_ENV
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=/musl-cross-make/output/bin/x86_64-linux-musl-g++" >> $GITHUB_ENV
-
-      - name: Build
-        run: |
-          cargo build --release --target $BUILD_TARGET
-
-      - name: Strip binary
-        run: /musl-cross-make/output/bin/x86_64-linux-musl-strip target/$BUILD_TARGET/release/$BINARY_NAME
-
-      - name: Verify static binary
-        run: ldd target/$BUILD_TARGET/release/$BINARY_NAME || true
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.BINARY_NAME }}-${{ env.BUILD_TARGET }}
-          path: target/${{ env.BINARY_NAME }}-${{ env.BUILD_TARGET }}/release/${{ env.BINARY_NAME }}
-
-      - name: Create release archive
-        if: github.event_name == 'release'
-        run: |
-          mkdir ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}
-          mv target/$BUILD_TARGET/release/$BINARY_NAME ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}/
-          tar -czf ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}.tar.gz ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}
-
-      - name: Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ env.BINARY_NAME }}-${{ github.event.release.tag_name }}-${{ env.BUILD_TARGET }}.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: List built files
+        run: ls -lh ministo/target/release
