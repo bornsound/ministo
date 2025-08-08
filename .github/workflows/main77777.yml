@@ -1,0 +1,38 @@
+name: Build Ministo on CentOS 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-centos7:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Build Ministo inside CentOS 7 container
+        run: |
+          docker run --rm -i \
+            -v "${{ github.workspace }}":/workspace \
+            -w /workspace \
+            centos:7 /bin/bash -c "\
+              yum -y update && \
+              yum -y groupinstall 'Development Tools' && \
+              yum -y install curl gcc gcc-c++ make openssl-devel && \
+              curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+              source $HOME/.cargo/env && \
+              cargo build --release"
+
+      - name: List build artifacts
+        run: ls -lh target/release/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ministo-centos7-release
+          path: target/release/
