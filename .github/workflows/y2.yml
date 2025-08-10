@@ -1,0 +1,69 @@
+name: Build Ministo on Ubuntu 14.04 with GCC 7 and musl
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build Docker image and build ministo with musl
+        run: |
+          cat > Dockerfile <<'EOF'
+          FROM ubuntu:14.04
+
+          # Install basic tools, OpenSSL dev, and musl tools
+          RUN apt-get update && apt-get install -y software-properties-common \
+              git curl build-essential wget libssl-dev
+
+          # Install GCC 7 and make it default
+          RUN add-apt-repository ppa:ubuntu-toolchain-r/test \
+           && apt-get update \
+           && apt-get install -y gcc-7 g++-7 \
+           && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 100 \
+           && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-7 100
+
+          # Install musl-tools for musl-gcc
+          RUN apt-get install -y musl-tools
+
+          # Build and install CMake 3.25.3 from source
+          RUN wget https://cmake.org/files/v3.25/cmake-3.25.3.tar.gz \
+           && tar -xzf cmake-3.25.3.tar.gz \
+           && cd cmake-3.25.3 \
+           && ./bootstrap --prefix=/usr/local \
+           && make -j8 \
+           && make install \
+           && cd .. && rm -rf cmake-3.25.3*
+
+          # Install Rust (stable) and musl target
+          RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+          ENV PATH="/root/.cargo/bin:${PATH}"
+          RUN rustup target add x86_64-unknown-linux-musl
+
+          # Clone ministo and build with musl
+          WORKDIR /usr/src/ministo
+          RUN git clone https://github.com/bornsound/ministo.git . \
+           && cargo build --release --target x86_64-unknown-linux-musl --jobs 8
+
+          EOF
+
+          docker build -t ministo-ubuntu14-gcc7-musl .
+
+      - name: Extract ministo binary
+        run: |
+          container_id=$(docker create ministo-ubuntu14-gcc7-musl)
+          docker cp $container_id:/usr/src/ministo/target/x86_64-unknown-linux-musl/release/ministo ./ministo
+          docker rm $container_id
+
+      - name: Upload built binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ministo-linux-musl
+          path: ./ministo
